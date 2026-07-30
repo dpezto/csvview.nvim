@@ -255,6 +255,14 @@ option can be changed without disabling the view first:
 :CsvViewEnable delimiter=; header_lnum=1
 ```
 
+It reports what it changed, so a command that silently did nothing is easy to
+spot:
+
+```
+csvview: view.sticky_columns.count=2 view.sticky_columns.enabled=true
+csvview: already enabled for this buffer.
+```
+
 When a sticky header is displayed, the header cells of the pinned columns stay in
 place with them. While columns are pinned, 'sidescrolloff' is raised for that
 window so the cursor is never hidden behind them; the previous value is restored

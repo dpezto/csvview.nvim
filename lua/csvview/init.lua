@@ -21,6 +21,30 @@ function M.is_enabled(bufnr)
   return views.get(bufnr) ~= nil
 end
 
+--- Collect the options that differ, as `path=value` strings.
+---
+--- Used to report what an `enable()` call on an attached buffer actually changed.
+---@param old table
+---@param new table
+---@param prefix string?
+---@param acc string[]?
+---@return string[]
+local function changed_options(old, new, prefix, acc)
+  acc = acc or {}
+  prefix = prefix or ""
+  for key, value in pairs(new) do
+    local path = prefix == "" and tostring(key) or string.format("%s.%s", prefix, key)
+    local previous = old[key]
+    local islist = vim.islist or vim.tbl_islist ---@type fun(t: table): boolean
+    if type(value) == "table" and type(previous) == "table" and not islist(value) then
+      changed_options(previous, value, path, acc)
+    elseif not vim.deep_equal(previous, value) then
+      table.insert(acc, string.format("%s=%s", path, vim.inspect(value, { newline = "", indent = "" })))
+    end
+  end
+  return acc
+end
+
 --- Apply options to an already attached buffer.
 ---
 --- View options only need the view re-rendered. Parser options decide how the
@@ -31,6 +55,13 @@ end
 ---@param opts CsvView.Options
 local function reapply(bufnr, view, opts)
   local merged = vim.tbl_deep_extend("force", view.opts, opts) --[[@as CsvView.InternalOptions]]
+  local changed = changed_options(view.opts, merged)
+  if #changed == 0 then
+    vim.notify("csvview: already enabled for this buffer.")
+    return
+  end
+
+  vim.notify("csvview: " .. table.concat(changed, " "))
   if not vim.deep_equal(merged.parser, view.opts.parser) then
     M.disable(bufnr)
     M.enable(bufnr, merged)

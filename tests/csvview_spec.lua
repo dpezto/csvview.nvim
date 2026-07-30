@@ -147,21 +147,46 @@ describe("csvview", function()
       csvview.disable(bufnr)
     end)
 
-    it("should keep the view when enabling again without options", function()
+    --- Capture the messages `fn` notifies.
+    ---@param fn fun()
+    ---@return string[]
+    local function captured_notifications(fn)
+      local messages = {} ---@type string[]
+      local notify = vim.notify
+      vim.notify = function(msg) ---@diagnostic disable-line: duplicate-set-field
+        table.insert(messages, msg)
+      end
+
+      local ok, err = pcall(fn)
+      vim.notify = notify ---@diagnostic disable-line: duplicate-set-field
+      assert(ok, err)
+      return messages
+    end
+
+    it("should report which options changed", function()
+      local bufnr = enabled_buf({ view = { display_mode = "highlight" } })
+      local messages = captured_notifications(function()
+        csvview.enable(bufnr, { view = { display_mode = "border" } })
+        vim.wait(50)
+      end)
+
+      assert.are.equal(1, #messages)
+      assert.is_truthy(messages[1]:find("display_mode", 1, true), messages[1])
+      assert.is_truthy(messages[1]:find("border", 1, true), messages[1])
+
+      csvview.disable(bufnr)
+    end)
+
+    it("should keep the view and report it when nothing changes", function()
       local bufnr = enabled_buf()
       local view = require("csvview.view").get(bufnr)
 
-      local notified = false
-      local notify = vim.notify
-      vim.notify = function() ---@diagnostic disable-line: duplicate-set-field
-        notified = true
-      end
+      local messages = captured_notifications(function()
+        csvview.enable(bufnr)
+        vim.wait(50)
+      end)
 
-      csvview.enable(bufnr)
-      vim.wait(50)
-      vim.notify = notify ---@diagnostic disable-line: duplicate-set-field
-
-      assert.is_false(notified)
+      assert.are.same({ "csvview: already enabled for this buffer." }, messages)
       assert.are.equal(view, require("csvview.view").get(bufnr))
 
       csvview.disable(bufnr)
