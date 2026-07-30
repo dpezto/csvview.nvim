@@ -306,7 +306,7 @@ function M.resolve_delimiter(bufnr, opts, quote_char)
     end
     -- If the delimiter is a table, it should contain a mapping of filetypes to delimiters.
     -- If the filetype is not found, it will try to detect the delimiter using the sniffer.
-    char = delim.ft[vim.bo.filetype]
+    char = delim.ft[vim.bo[bufnr].filetype]
     if not char then
       char, scores = require("csvview.sniffer").buf_detect_delimiter(
         bufnr,
