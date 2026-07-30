@@ -188,6 +188,30 @@ describe("util", function()
   run(create_test(","))
   run(create_test("|||||"))
 
+  describe("resolve_delimiter", function()
+    it("should use the filetype of the target buffer, not the current one", function()
+      local config = require("csvview.config")
+      local opts = config.get({
+        parser = { delimiter = { ft = { csv = ",", tsv = "\t" }, fallbacks = { ",", "\t", ";" } } },
+      })
+
+      -- Current buffer is a csv, the buffer being resolved is a tsv.
+      local current = vim.api.nvim_create_buf(false, true)
+      vim.bo[current].filetype = "csv"
+      vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), current)
+
+      local target = vim.api.nvim_create_buf(false, true)
+      vim.bo[target].filetype = "tsv"
+      vim.api.nvim_buf_set_lines(target, 0, -1, false, {
+        "name\tage\tcity",
+        "John\t25\tNew York",
+      })
+
+      local delimiter = util.resolve_delimiter(target, opts, '"')
+      assert.equals("\t", delimiter)
+    end)
+  end)
+
   describe("get_cursor (multi-line)", function()
     ---@type CsvView.Options
     local opts = {
