@@ -188,6 +188,64 @@ describe("util", function()
   run(create_test(","))
   run(create_test("|||||"))
 
+  describe("resolve_delimiter", function()
+    local config = require("csvview.config")
+
+    --- Options with the stock ft map and fallbacks.
+    ---@return CsvView.InternalOptions
+    local function ft_opts()
+      return config.get({
+        parser = { delimiter = { ft = { csv = ",", tsv = "\t" }, fallbacks = { ",", "\t", ";" } } },
+      })
+    end
+
+    --- Create a scratch buffer with a filetype and content, and make it current.
+    ---@param filetype string
+    ---@param lines string[]
+    ---@return integer bufnr
+    local function make_buf(filetype, lines)
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.bo[bufnr].filetype = filetype
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), bufnr)
+      return bufnr
+    end
+
+    it("should use the ft delimiter when it fits the content", function()
+      local bufnr = make_buf("csv", {
+        "name,age,city",
+        "John,25,New York",
+        "Jane,30,Los Angeles",
+      })
+
+      local char, auto = util.resolve_delimiter(bufnr, ft_opts(), '"')
+      assert.equals(",", char)
+      assert.is_false(auto)
+    end)
+
+    it("should fall back to detection when the ft delimiter does not fit", function()
+      -- A tab-separated file that happens to be named .csv
+      local bufnr = make_buf("csv", {
+        "name\tage\tcity",
+        "John\t25\tNew York",
+        "Jane\t30\tLos Angeles",
+      })
+
+      local char, auto = util.resolve_delimiter(bufnr, ft_opts(), '"')
+      assert.equals("\t", char)
+      assert.is_true(auto)
+    end)
+
+    it("should keep the ft delimiter when detection finds nothing better", function()
+      -- Single column: no delimiter fits, so the ft hint stands.
+      local bufnr = make_buf("csv", { "name", "John", "Jane" })
+
+      local char, auto = util.resolve_delimiter(bufnr, ft_opts(), '"')
+      assert.equals(",", char)
+      assert.is_false(auto)
+    end)
+  end)
+
   describe("get_cursor (multi-line)", function()
     ---@type CsvView.Options
     local opts = {
