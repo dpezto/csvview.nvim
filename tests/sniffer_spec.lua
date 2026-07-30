@@ -395,6 +395,89 @@ describe("csvview.sniffer", function()
     end)
   end)
 
+  describe("buffer sampling", function()
+    --- Create a scratch buffer with the given lines.
+    ---@param lines string[]
+    ---@return integer bufnr
+    local function make_buf(lines)
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      return bufnr
+    end
+
+    --- Build lines with `count` comment lines followed by `data`.
+    ---@param count integer
+    ---@param data string[]
+    ---@return string[]
+    local function with_comment_block(count, data)
+      local lines = {} ---@type string[]
+      for i = 1, count do
+        lines[i] = string.format("# key_%d = value_%d", i, i)
+      end
+      return vim.list_extend(lines, data)
+    end
+
+    it("should detect the header past a comment block longer than the sample size", function()
+      local bufnr = make_buf(with_comment_block(28, {
+        "time\tMTS\tPZT",
+        "-2.826240e-02\t1.550000e+00\t1.400000e-02",
+        "-2.825920e-02\t1.550000e+00\t1.320000e-02",
+        "-2.825600e-02\t1.550000e+00\t1.400000e-02",
+      }))
+
+      local header_lnum = sniffer.buf_detect_header(bufnr, "\t", '"', is_comment, opts.max_lookahead)
+      assert.equals(29, header_lnum)
+    end)
+
+    it("should detect the delimiter past a comment block longer than the sample size", function()
+      local bufnr = make_buf(with_comment_block(28, {
+        "time\tMTS\tPZT",
+        "-2.826240e-02\t1.550000e+00\t1.400000e-02",
+        "-2.825920e-02\t1.550000e+00\t1.320000e-02",
+      }))
+
+      local delimiter = sniffer.buf_detect_delimiter(bufnr, '"', is_comment, opts.max_lookahead, { ",", "\t", ";" })
+      assert.equals("\t", delimiter)
+    end)
+
+    it("should not report a header when the data past the comment block has none", function()
+      local bufnr = make_buf(with_comment_block(28, {
+        "-2.826240e-02\t1.550000e+00\t1.400000e-02",
+        "-2.825920e-02\t1.550000e+00\t1.320000e-02",
+        "-2.825600e-02\t1.550000e+00\t1.400000e-02",
+      }))
+
+      local header_lnum = sniffer.buf_detect_header(bufnr, "\t", '"', is_comment, opts.max_lookahead)
+      assert.is_nil(header_lnum)
+    end)
+
+    it("should stop scanning a comment-only buffer at the scan limit", function()
+      local lines = with_comment_block(2000, {})
+      local bufnr = make_buf(lines)
+
+      local scanned = 0
+      local counting_is_comment = function(lnum, line)
+        scanned = math.max(scanned, lnum)
+        return is_comment(lnum, line)
+      end
+
+      local header_lnum = sniffer.buf_detect_header(bufnr, ",", '"', counting_is_comment, opts.max_lookahead)
+      assert.is_nil(header_lnum)
+      assert.is_true(scanned <= 1000, string.format("scanned %d lines, expected at most 1000", scanned))
+    end)
+
+    it("should not widen the window for a buffer without comments", function()
+      local bufnr = make_buf({
+        "name,age,city",
+        "John,25,New York",
+        "Jane,30,Los Angeles",
+      })
+
+      assert.equals(1, sniffer.buf_detect_header(bufnr, ",", '"', is_comment, opts.max_lookahead))
+      assert.equals(",", sniffer.buf_detect_delimiter(bufnr, '"', is_comment, opts.max_lookahead, { ",", "\t", ";" }))
+    end)
+  end)
+
   describe("real file examples", function()
     it("should work with test.csv fixture", function()
       local lines = testutil.readlines("tests/fixtures/test.csv")

@@ -9,6 +9,11 @@ local DEFAULT_DELIMITERS = { ",", "\t", ";", "|", ":", " " }
 local DEFAULT_QUOTE_CHARS = { '"', "'" }
 local DEFAULT_BUF_N_SAMPLES = 10
 
+--- Upper bound on how many lines a buffer sampling pass reads.
+--- Only matters when comment lines are skipped: it caps the work done on a file
+--- that is all comments.
+local DEFAULT_BUF_MAX_SCAN = 1000
+
 --- Create a parser for the given sample lines
 ---@param sample_lines string[] Sample lines to use instead of the buffer
 ---@param delimiter string The delimiter character
@@ -491,30 +496,76 @@ function M.detect_header(sample_lines, delimiter, quote_char, comment, max_looka
   return nil, reason
 end
 
+--- Collect sample lines from the top of the buffer.
+---
+--- Comment lines do not count towards `n_samples`, so a file with a long leading
+--- comment or metadata block still gets `n_samples` data lines to analyze.
+--- The returned slice stays contiguous and starts at line 1: callers report buffer
+--- line numbers from it and the parser walks multiline fields by index, so comment
+--- lines are kept in place rather than filtered out.
+---@param bufnr integer Buffer number to sample
+---@param comment (fun(lnum: integer, line: string): boolean)? Function to determine if a line is a comment
+---@param n_samples integer Number of non-comment lines to collect
+---@param max_scan integer? Maximum number of lines to scan
+---@return string[] sample_lines
+local function buf_sample_lines(bufnr, comment, n_samples, max_scan)
+  if not comment then
+    return vim.api.nvim_buf_get_lines(bufnr, 0, n_samples, false)
+  end
+
+  max_scan = max_scan or DEFAULT_BUF_MAX_SCAN
+  local lines = {} ---@type string[]
+  local data_count = 0
+  local scanned = 0
+
+  -- Read in chunks so that a file without comments costs a single read of `n_samples` lines.
+  while scanned < max_scan do
+    local chunk = vim.api.nvim_buf_get_lines(bufnr, scanned, math.min(scanned + n_samples, max_scan), false)
+    if #chunk == 0 then
+      break -- end of buffer
+    end
+
+    for _, line in ipairs(chunk) do
+      scanned = scanned + 1
+      lines[scanned] = line
+      if not comment(scanned, line) then
+        data_count = data_count + 1
+        if data_count >= n_samples then
+          return lines
+        end
+      end
+    end
+  end
+
+  -- Fewer than `n_samples` data lines within the scan limit, use what was found.
+  return lines
+end
+
 --- Detects the delimiter for a buffer by sampling lines
 ---@param bufnr integer Buffer number to analyze
 ---@param quote_char string Quote character to use
 ---@param comment fun(lnum: integer, line: string): boolean Function to determine if a line is a comment
 ---@param max_lookahead integer Maximum lookahead for parsing
 ---@param candidates string[]? Possible delimiters to check
----@param n_samples integer? Number of lines to sample
+---@param n_samples integer? Number of non-comment lines to sample
 ---@return string delimiter The detected delimiter character
 ---@return table<string, number> scores The scores for delimiter
 function M.buf_detect_delimiter(bufnr, quote_char, comment, max_lookahead, candidates, n_samples)
   n_samples = n_samples or DEFAULT_BUF_N_SAMPLES
-  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, n_samples, false)
+  local sample_lines = buf_sample_lines(bufnr, comment, n_samples)
   return M.detect_delimiter(sample_lines, candidates, quote_char, comment, max_lookahead)
 end
 
 --- Detects the quote character for a buffer by sampling lines
 ---@param bufnr integer Buffer number to analyze
 ---@param candidates string[]? Possible quote characters to check
----@param n_samples integer? Number of lines to sample
+---@param n_samples integer? Number of non-comment lines to sample
+---@param comment (fun(lnum: integer, line: string): boolean)? Function to determine if a line is a comment
 ---@return string quote_char The detected quote character
 ---@return table<string, number> scores The scores for quote char
-function M.buf_detect_quote_char(bufnr, candidates, n_samples)
+function M.buf_detect_quote_char(bufnr, candidates, n_samples, comment)
   n_samples = n_samples or DEFAULT_BUF_N_SAMPLES
-  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, n_samples, false)
+  local sample_lines = buf_sample_lines(bufnr, comment, n_samples)
   return M.detect_quote_char(sample_lines, candidates)
 end
 
@@ -524,12 +575,12 @@ end
 ---@param quote_char string The quote character to use
 ---@param comment fun(lnum: integer, line: string): boolean Function to determine if a line is a comment
 ---@param max_lookahead integer Maximum lookahead for parsing
----@param n_samples integer? Number of lines to sample
+---@param n_samples integer? Number of non-comment lines to sample
 ---@return integer? header_lnum The line number of the header row, if detected
 ---@return string | CsvView.Sniffer.HeaderDetectionReason reason Debug information about the detection process
 function M.buf_detect_header(bufnr, delimiter, quote_char, comment, max_lookahead, n_samples)
   n_samples = n_samples or DEFAULT_BUF_N_SAMPLES
-  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, n_samples, false)
+  local sample_lines = buf_sample_lines(bufnr, comment, n_samples)
   return M.detect_header(sample_lines, delimiter, quote_char, comment, max_lookahead)
 end
 
