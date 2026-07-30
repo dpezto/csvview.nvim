@@ -172,11 +172,13 @@ The plugin automatically detects header rows by analyzing file content:
 
 #### How Header Auto-Detection Works
 
-1. Find the first non-comment line as header candidate
-2. Analyze each column independently using two heuristics:
+1. Sample lines from the top of the buffer until 10 non-comment lines are collected,
+   so a long leading comment or metadata block does not hide the header
+2. Find the first non-comment line as header candidate
+3. Analyze each column independently using two heuristics:
    - **Type Mismatch**: If the first row contains text while data rows are numeric, it's likely a header
    - **Length Deviation**: If the first row's text length differs significantly from data rows, it's likely a header
-3. Combine evidence from all columns to make the final decision
+4. Combine evidence from all columns to make the final decision
 
 ### Manual Header Configuration
 
@@ -221,6 +223,35 @@ The plugin automatically detects header rows by analyzing file content:
   },
 }
 ```
+
+## Sticky Columns
+
+Keep the leftmost columns in place while scrolling horizontally, like frozen panes
+in a spreadsheet. The remaining columns slide underneath them.
+
+```lua
+{
+  view = {
+    sticky_columns = {
+      enabled = true,  -- Off by default
+      count = 1,       -- Number of columns to pin, counted from the left
+    },
+  },
+}
+```
+
+Pin or unpin without editing the configuration:
+
+```vim
+:CsvViewEnable sticky_columns=2  " When enabling the view
+:CsvViewStickyColumns 2          " On an already attached buffer
+:CsvViewStickyColumns 0          " Unpin
+```
+
+When a sticky header is displayed, the header cells of the pinned columns stay in
+place with them. While columns are pinned, 'sidescrolloff' is raised for that
+window so the cursor is never hidden behind them; the previous value is restored
+when they are unpinned.
 
 ## Navigation & Text Objects
 
