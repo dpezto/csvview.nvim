@@ -306,18 +306,26 @@ function M.resolve_delimiter(bufnr, opts, quote_char)
     end
     -- If the delimiter is a table, it should contain a mapping of filetypes to delimiters.
     -- If the filetype is not found, it will try to detect the delimiter using the sniffer.
+    local sniffer = require("csvview.sniffer")
+    local is_comment = M.create_is_comment(opts)
     char = delim.ft[vim.bo[bufnr].filetype]
+    auto = false
+
+    -- The `ft` entry is a hint, not a guarantee: a `.csv` file may well be tab- or
+    -- semicolon-separated. When it does not split the content into fields at all,
+    -- detect instead, and keep the sniffed delimiter only if that one does.
+    if char and sniffer.buf_score_delimiter(bufnr, char, quote_char, is_comment, opts.parser.max_lookahead) <= 0 then
+      local sniffed, sniffed_scores =
+        sniffer.buf_detect_delimiter(bufnr, quote_char, is_comment, opts.parser.max_lookahead, delim.fallbacks)
+      if (sniffed_scores[sniffed] or 0) > 0 then
+        char, scores, auto = sniffed, sniffed_scores, true
+      end
+    end
+
     if not char then
-      char, scores = require("csvview.sniffer").buf_detect_delimiter(
-        bufnr,
-        quote_char,
-        M.create_is_comment(opts),
-        opts.parser.max_lookahead,
-        delim.fallbacks
-      )
+      char, scores =
+        sniffer.buf_detect_delimiter(bufnr, quote_char, is_comment, opts.parser.max_lookahead, delim.fallbacks)
       auto = true
-    else
-      auto = false
     end
   end
 

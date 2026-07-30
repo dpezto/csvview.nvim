@@ -556,6 +556,23 @@ function M.buf_detect_delimiter(bufnr, quote_char, comment, max_lookahead, candi
   return M.detect_delimiter(sample_lines, candidates, quote_char, comment, max_lookahead)
 end
 
+--- Scores how well a delimiter fits the buffer content.
+---
+--- Same consistency score `detect_delimiter` ranks candidates by: 0 means the
+--- delimiter does not split the sampled lines into a stable set of fields.
+---@param bufnr integer Buffer number to analyze
+---@param delimiter string The delimiter character to score
+---@param quote_char string Quote character to use
+---@param comment fun(lnum: integer, line: string): boolean Function to determine if a line is a comment
+---@param max_lookahead integer Maximum lookahead for parsing
+---@param n_samples integer? Number of non-comment lines to sample
+---@return number score Consistency score (0-1, higher is better)
+function M.buf_score_delimiter(bufnr, delimiter, quote_char, comment, max_lookahead, n_samples)
+  n_samples = n_samples or DEFAULT_BUF_N_SAMPLES
+  local sample_lines = buf_sample_lines(bufnr, comment, n_samples)
+  return M._calculate_consistency_score(sample_lines, delimiter, quote_char, comment, max_lookahead)
+end
+
 --- Detects the quote character for a buffer by sampling lines
 ---@param bufnr integer Buffer number to analyze
 ---@param candidates string[]? Possible quote characters to check
