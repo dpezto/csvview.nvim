@@ -172,11 +172,13 @@ The plugin automatically detects header rows by analyzing file content:
 
 #### How Header Auto-Detection Works
 
-1. Find the first non-comment line as header candidate
-2. Analyze each column independently using two heuristics:
+1. Sample lines from the top of the buffer until 10 non-comment lines are collected,
+   so a long leading comment or metadata block does not hide the header
+2. Find the first non-comment line as header candidate
+3. Analyze each column independently using two heuristics:
    - **Type Mismatch**: If the first row contains text while data rows are numeric, it's likely a header
    - **Length Deviation**: If the first row's text length differs significantly from data rows, it's likely a header
-3. Combine evidence from all columns to make the final decision
+4. Combine evidence from all columns to make the final decision
 
 ### Manual Header Configuration
 
